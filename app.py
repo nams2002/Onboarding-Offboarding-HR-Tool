@@ -18,6 +18,43 @@ import weasyprint
 # Load environment variables
 load_dotenv()
 
+# Function to get configuration from Streamlit secrets or environment variables
+def get_config_value(key, default=None):
+    """Get configuration value from Streamlit secrets or environment variables"""
+    try:
+        # Try to get from Streamlit secrets first
+        if hasattr(st, 'secrets') and key in st.secrets:
+            return st.secrets[key]
+        # Fall back to environment variables
+        return os.getenv(key, default)
+    except:
+        return os.getenv(key, default)
+
+def get_email_config():
+    """Get email configuration from secrets or environment"""
+    try:
+        if hasattr(st, 'secrets') and 'email' in st.secrets:
+            return {
+                'smtp_server': st.secrets['email']['smtp_server'],
+                'smtp_port': int(st.secrets['email']['smtp_port']),
+                'sender_email': st.secrets['email']['sender_email'],
+                'sender_password': st.secrets['email']['sender_password']
+            }
+        else:
+            return {
+                'smtp_server': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
+                'smtp_port': int(os.getenv('SMTP_PORT', '587')),
+                'sender_email': os.getenv('SENDER_EMAIL', ''),
+                'sender_password': os.getenv('SENDER_PASSWORD', '')
+            }
+    except:
+        return {
+            'smtp_server': 'smtp.gmail.com',
+            'smtp_port': 587,
+            'sender_email': '',
+            'sender_password': ''
+        }
+
 # Page configuration
 st.set_page_config(
     page_title="Rapid Innovation - Onboarding Automation",
@@ -1181,9 +1218,16 @@ page = st.sidebar.selectbox("Choose Process", [
 
 # Email configuration in session state
 if 'email_config' not in st.session_state:
-    # Try to load from environment variables first
-    env_config = load_email_config()
-    st.session_state.email_config = env_config
+    # Try to load from Streamlit secrets or environment variables
+    try:
+        email_config = get_email_config()
+        email_config['configured'] = bool(email_config['sender_email'] and email_config['sender_password'])
+        email_config['sender_name'] = get_config_value('SENDER_NAME', 'Rapid Innovation HR')
+        st.session_state.email_config = email_config
+    except:
+        # Fallback to old method
+        env_config = load_email_config()
+        st.session_state.email_config = env_config
 
 if page == "🏠 Home":
     st.markdown("""
@@ -1235,15 +1279,16 @@ elif page == "📧 Email Configuration":
     </div>
     """, unsafe_allow_html=True)
 
-    # Check if environment variables are loaded
-    env_config = load_email_config()
-    if env_config['configured']:
-        st.success("✅ Email configuration loaded from environment variables!")
-        st.info(f"**Sender Email:** {env_config['sender_email']}")
-        st.info(f"**SMTP Server:** {env_config['smtp_server']}:{env_config['smtp_port']}")
+    # Check if configuration is loaded from secrets or environment
+    if st.session_state.email_config['configured']:
+        # Check if loaded from Streamlit secrets
+        if hasattr(st, 'secrets') and 'email' in st.secrets:
+            st.success("✅ Email configuration loaded from Streamlit Cloud secrets!")
+        else:
+            st.success("✅ Email configuration loaded from environment variables!")
 
-        # Update session state with env config
-        st.session_state.email_config = env_config
+        st.info(f"**Sender Email:** {st.session_state.email_config['sender_email']}")
+        st.info(f"**SMTP Server:** {st.session_state.email_config['smtp_server']}:{st.session_state.email_config['smtp_port']}")
     else:
         st.info("Configure your email settings to enable automatic email sending functionality.")
 
